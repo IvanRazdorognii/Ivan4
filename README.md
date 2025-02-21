@@ -98,11 +98,164 @@ public function store(Request $request)
     ]);
 ```
 ### Обновляем create.blade.php
-### В методе create контроллера передаем категории в представление:
+
+## №4. Создание собственного класса запроса (Request)
+### На втором этапе создайте собственный класс запроса для валидации формы задачи:
+```
+php artisan make:request CreateTaskRequest
+```
+### В классе CreateTaskRequest определите правила валидации, аналогичные тем, что были в контроллере.
 ```php
-public function create()
+<?php
+
+namespace App\Http\Requests;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class CreateTaskRequest extends FormRequest
 {
-    $categories = Category::all();
-    return view('tasks.create', compact('categories'));
+    /**
+     * Определяем, разрешено ли выполнение запроса.
+     */
+    public function authorize(): bool
+    {
+        return true; // Разрешаем выполнение запроса для всех пользователей
+    }
+
+    /**
+     * Определяем правила валидации.
+     */
+    public function rules(): array
+    {
+        return [
+            'title' => 'required|string|min:3',
+            'description' => 'nullable|string|max:500',
+            'due_date' => 'required|date|after_or_equal:today',
+            'category_id' => ['required', 'exists:categories,id'],
+        ];
+    }
+
+    /**
+     * Сообщения об ошибках (если нужно изменить стандартные).
+     */
+    public function messages(): array
+    {
+        return [
+            'title.required' => 'Название обязательно.',
+            'title.min' => 'Название должно содержать минимум 3 символа.',
+            'description.max' => 'Описание не может превышать 500 символов.',
+            'due_date.required' => 'Дата выполнения обязательна.',
+            'due_date.after_or_equal' => 'Дата выполнения должна быть сегодняшней или позднее.',
+            'category_id.required' => 'Выберите категорию.',
+            'category_id.exists' => 'Выбранная категория не существует.',
+        ];
+    }
 }
 ```
+### Обновите метод store контроллера TaskController для использования CreateTaskRequest вместо стандартного Request.
+```php
+use App\Http\Requests\CreateTaskRequest;
+
+public function store(CreateTaskRequest $request)
+{
+    // Данные уже валидированы, можно просто создать задачу
+    Task::create($request->validated());
+
+    return redirect()->route('tasks.index')->with('success', 'Задача успешно добавлена.');
+}
+```
+
+![image](https://github.com/user-attachments/assets/47c5e34c-ac52-4dfb-af83-0e8124afaf92)
+
+## №5. Добавление флеш-сообщений
+### Обновим store() в TaskController.php
+Добавм флеш-сообщение после успешного создания задачи:
+```php
+public function store(CreateTaskRequest $request)
+{
+    Task::create($request->validated());
+
+    return redirect()->route('tasks.index')->with('success', 'Задача успешно добавлена.');
+}
+```
+### Выведим флеш-сообщение в Blade-шаблоне
+В файле resources/views/layouts/app.blade.php (или в файле, где отображается список задач), добавь код:
+```php
+@if (session('success'))
+    <div class="alert alert-success">
+        {{ session('success') }}
+    </div>
+@endif
+```
+
+## №6. Защита от CSRF
+Добавим @csrf в форму в create.blade.php 
+## №7. Обновление задачи
+### Создадим представление /edit.blade.php:
+2. Создание класса UpdateTaskRequest
+Создем новый реквест-компонент:
+```
+php artisan make:request UpdateTaskRequest
+```
+### Затем в app/Http/Requests/UpdateTaskRequest.php настроим валидацию:
+```php
+<?php
+
+namespace App\Http\Requests;
+
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+class UpdateTaskRequest extends FormRequest
+{
+    public function authorize()
+    {
+        return true;
+    }
+
+    public function rules()
+    {
+        return [
+            'title' => 'required|string|min:3',
+            'description' => 'nullable|string|max:500',
+            'due_date' => 'required|date|after_or_equal:today',
+            'category_id' => ['required', Rule::exists('categories', 'id')],
+        ];
+    }
+}
+```
+### 3. Добавленим маршрутов в routes/web.php
+```php
+Route::get('/tasks/{task}/edit', [TaskController::class, 'edit'])->name('tasks.edit');
+Route::put('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
+```
+4. Обновление TaskController.php
+Добавим метод edit(), который передает задачу и список категорий в представление:
+```php
+public function edit(Task $task)
+{
+    $categories = Category::all();
+    return view('tasks.edit', compact('task', 'categories'));
+}
+```
+Добавим метод update(), который обновляет данные задачи и возвращает пользователя обратно с флеш-сообщением:
+```php
+public function update(UpdateTaskRequest $request, Task $task)
+{
+    $task->update($request->validated());
+
+    return redirect()->route('tasks.index')->with('success', 'Задача успешно обновлена.');
+}
+```
+# Контрольные вопросы
+### Что такое валидация данных и зачем она нужна?
+Валидация данных — это процесс проверки данных, полученных от пользователя, на соответствие определённым правилам. Она нужна для обеспечения целостности данных и предотвращения ошибок или атак.
+
+### Как обеспечить защиту формы от CSRF-атак в Laravel?
+Защита от CSRF-атак обеспечивается автоматически с помощью токенов, которые вставляются в формы через директиву @csrf в Blade-шаблонах.
+
+### Как создать и использовать собственные классы запросов (Request) в Laravel?
+Для создания собственного запроса нужно использовать команду php artisan make:request CustomRequest, затем определить правила валидации в методе rules() и применить его в контроллере.
+
+### Как защитить данные от XSS-атак при выводе в представлении?
+Для защиты от XSS-атак следует использовать экранирование данных с помощью функции {{ }} в Blade-шаблонах, которая автоматически преобразует специальные символы в безопасный формат.
